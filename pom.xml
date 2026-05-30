@@ -41,7 +41,7 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-        </dependencies>
+                <dependency> <groupId>xalan</groupId> <artifactId>xalan</artifactId> <version>2.7.3</version> </dependency> <dependency> <groupId>com.fasterxml.woodstox</groupId> <artifactId>woodstox-core</artifactId> <version>6.5.1</version> </dependency> </dependencies>
     </dependencyManagement>
 
     <dependencies>
@@ -82,7 +82,7 @@
             <version>5.10.2</version>
             <scope>test</scope>
         </dependency>
-    </dependencies>
+            <dependency> <groupId>xalan</groupId> <artifactId>xalan</artifactId> <version>2.7.3</version> </dependency> <dependency> <groupId>com.fasterxml.woodstox</groupId> <artifactId>woodstox-core</artifactId> <version>6.5.1</version> </dependency> </dependencies>
 
     <build>
         <plugins>

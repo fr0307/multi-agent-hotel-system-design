@@ -28,7 +28,8 @@ public class App {
         ChatModel chatModel = createChatModel(mapper, cfg);
         ChatClient chatClient = ChatClient.builder(chatModel).build();
 
-        var io = new ConsoleIO(new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8)));
+        var reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+        var io = new ConsoleIO(reader, cfg);
         var writer = new MarkdownLogWriter(cfg.outputDir, mapper);
 
         var engine = new MultiAgentEngine(cfg, mapper, chatClient, io, writer);
@@ -40,9 +41,11 @@ public class App {
     }
 
     private static ChatModel createChatModel(ObjectMapper mapper, AppConfig cfg) {
-        // 特殊处理：如果是 qwen 系列模型（尤其是 qwen3-32b），并且使用了百炼的 API Key，
-        // 则直接切换为 Spring AI Alibaba 专属的 DashScopeChatModel，以便支持 enable_thinking 等特有参数。
-        if (cfg.openAiApiKey != null && !cfg.openAiApiKey.isBlank() && cfg.openAiModel != null && cfg.openAiModel.toLowerCase().startsWith("qwen")) {
+        // Special handling: if the configured model is a qwen-family model AND we have a
+        // bailian / dashscope API key, prefer the DashScope-specific ChatModel so we can
+        // turn off the "thinking" feature that messes with strict-JSON outputs.
+        if (cfg.openAiApiKey != null && !cfg.openAiApiKey.isBlank()
+                && cfg.openAiModel != null && cfg.openAiModel.toLowerCase().startsWith("qwen")) {
             DashScopeApi dashScopeApi = DashScopeApi.builder().apiKey(cfg.openAiApiKey).build();
             DashScopeChatOptions options = DashScopeChatOptions.builder()
                     .withModel(cfg.openAiModel)
@@ -55,7 +58,9 @@ public class App {
         }
 
         if (cfg.openAiApiKey != null && !cfg.openAiApiKey.isBlank()) {
-            String baseUrl = cfg.openAiBaseUrl != null && !cfg.openAiBaseUrl.isBlank() ? cfg.openAiBaseUrl : "https://api.openai.com";
+            String baseUrl = cfg.openAiBaseUrl != null && !cfg.openAiBaseUrl.isBlank()
+                    ? cfg.openAiBaseUrl
+                    : "https://api.openai.com";
             var openAiApi = org.springframework.ai.openai.api.OpenAiApi.builder()
                     .baseUrl(baseUrl)
                     .apiKey(cfg.openAiApiKey)
@@ -69,11 +74,25 @@ public class App {
                     .build();
         }
 
+        // Fallback: a raw env var named AI_DASHSCOPE_API_KEY (legacy convenience).
         String key = System.getenv("AI_DASHSCOPE_API_KEY");
         if (key != null && !key.isBlank()) {
             DashScopeApi dashScopeApi = DashScopeApi.builder().apiKey(key).build();
             return DashScopeChatModel.builder().dashScopeApi(dashScopeApi).build();
         }
-        return new MockChatModel(mapper);
+
+        // No real API key available. Only fall back to MockChatModel if the user
+        // explicitly opted in (ma.use-mock=true) — otherwise fail fast so we never
+        // ship a "mock-generated" report by accident.
+        if (cfg.useMock) {
+            log.warn("No API key configured but ma.use-mock=true → using MockChatModel. "
+                    + "The generated report will be deterministic stubs, NOT a real LLM design.");
+            return new MockChatModel(mapper);
+        }
+        throw new IllegalStateException(
+                "No LLM API key configured. Set spring.ai.openai.api-key in "
+                        + "src/main/resources/application.properties (see application.properties.example),"
+                        + " or export APP_OPENAI_API_KEY=... ."
+                        + " To explicitly opt into the offline mock, set ma.use-mock=true.");
     }
 }
